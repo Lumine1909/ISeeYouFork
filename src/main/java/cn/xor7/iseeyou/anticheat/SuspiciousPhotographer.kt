@@ -1,9 +1,10 @@
 package cn.xor7.iseeyou.anticheat
 
-import org.leavesmc.leaves.entity.Photographer
+import io.github.lumine1909.api.recorder.Recorder
+
 
 data class SuspiciousPhotographer(
-    val photographer: Photographer,
+    val photographer: Recorder,
     val name: String,
     val lastTagged: Long,
 )

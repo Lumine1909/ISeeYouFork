@@ -1,5 +1,8 @@
 package cn.xor7.iseeyou
 
+import io.github.lumine1909.api.RecorderAPI
+import io.github.lumine1909.api.recorder.Recorder
+import io.github.lumine1909.api.recorder.RecorderOption
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -7,7 +10,6 @@ import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
-import org.leavesmc.leaves.entity.Photographer
 import java.io.File
 import java.io.IOException
 import java.time.LocalDateTime
@@ -34,9 +36,8 @@ object EventListener : Listener {
             return
         }
         if (toml!!.data.pauseInsteadOfStopRecordingOnPlayerQuit && photographers.containsKey(playerUniqueId)) {
-            val photographer: Photographer = photographers[playerUniqueId]!!
+            val photographer: Recorder = photographers[playerUniqueId]!!
             photographer.resumeRecording()
-            photographer.setFollowPlayer(player)
             return
         }
         if (toml!!.data.instantReplay.enabled) {
@@ -49,18 +50,6 @@ object EventListener : Listener {
         if (prefix.startsWith(".")) { // fix Floodgate
             prefix = prefix.replace(".", "_")
         }
-        val photographer = Bukkit
-            .getPhotographerManager()
-            .createPhotographer(
-                (prefix + "_" + UUID.randomUUID().toString().replace("-".toRegex(), "")).substring(0, 16),
-                player.location
-            )
-        if (photographer == null) {
-            throw RuntimeException(
-                "Error on create photographer for player: {name: " + player.name + " , UUID:" + playerUniqueId + "}"
-            )
-        }
-
         val currentTime = LocalDateTime.now()
         val recordPath: String = toml!!.data.recordPath
             .replace("\${name}", player.name)
@@ -71,10 +60,19 @@ object EventListener : Listener {
             recordFile.delete()
         }
         recordFile.createNewFile()
-        photographer.setRecordFile(recordFile)
-
+        val photographer = RecorderAPI.manager.createVirtualRecorder(
+            (prefix + "_" + UUID.randomUUID().toString().replace("-".toRegex(), "")).substring(0, 16),
+            player,
+            recordFile,
+            RecorderOption()
+        )
+        if (photographer == null) {
+            throw RuntimeException(
+                "Error on create photographer for player: {name: " + player.name + " , UUID:" + playerUniqueId + "}"
+            )
+        }
         photographers[playerUniqueId] = photographer
-        photographer.setFollowPlayer(player)
+        photographer.startRecording()
     }
 
     /**
@@ -82,7 +80,7 @@ object EventListener : Listener {
      */
     @EventHandler
     fun onPlayerMove(event: PlayerMoveEvent) {
-        val photographer: Photographer = photographers[event.player.uniqueId.toString()] ?: return
+        val photographer: Recorder = photographers[event.player.uniqueId.toString()] ?: return
         val velocity = event.player.velocity
         if (toml!!.data.pauseRecordingOnHighSpeed.enabled &&
             velocity.x.pow(2.0) + velocity.z.pow(2.0) > pauseRecordingOnHighSpeedThresholdPerTickSquared &&
@@ -92,7 +90,6 @@ object EventListener : Listener {
             highSpeedPausedPhotographers.add(photographer)
         }
         photographer.resumeRecording()
-        photographer.setFollowPlayer(event.player)
         highSpeedPausedPhotographers.remove(photographer)
     }
 
@@ -106,15 +103,15 @@ object EventListener : Listener {
             InstantReplayManager.taskMap[player.uniqueId.toString()]?.cancel()
             InstantReplayManager.taskMap.remove(player.uniqueId.toString())
             InstantReplayManager.player2photographerUUIDMap[player.uniqueId.toString()]?.forEach { uuid ->
-                InstantReplayManager.photographerMap[uuid]?.stopRecording(false,false)
+                InstantReplayManager.photographerMap[uuid]?.stopRecording()
             }
         }
-        val photographer: Photographer = photographers[player.uniqueId.toString()] ?: return
+        val photographer: Recorder = photographers[player.uniqueId.toString()] ?: return
         highSpeedPausedPhotographers.remove(photographer)
         if (toml!!.data.pauseInsteadOfStopRecordingOnPlayerQuit) {
             photographer.resumeRecording()
         } else {
-            photographer.stopRecording(toml!!.data.asyncSave)
+            photographer.stopRecording()
             photographers.remove(player.uniqueId.toString())
         }
     }

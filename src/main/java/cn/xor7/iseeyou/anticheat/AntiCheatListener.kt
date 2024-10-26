@@ -3,6 +3,8 @@ package cn.xor7.iseeyou.anticheat
 import cn.xor7.iseeyou.EventListener
 import cn.xor7.iseeyou.instance
 import cn.xor7.iseeyou.toml
+import io.github.lumine1909.api.RecorderAPI
+import io.github.lumine1909.api.recorder.RecorderOption
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -25,7 +27,7 @@ object AntiCheatListener : Listener {
                     if (currentTime - it.value.lastTagged >
                         Duration.ofMinutes(toml!!.data.recordSuspiciousPlayer.recordMinutes).toMillis()
                     ) {
-                        it.value.photographer.stopRecording(toml!!.data.asyncSave)
+                        it.value.photographer.stopRecording()
                         return@removeIf true
                     } else false
                 }
@@ -39,19 +41,6 @@ object AntiCheatListener : Listener {
             suspiciousPhotographers[player.name] =
                 suspiciousPhotographer.copy(lastTagged = System.currentTimeMillis())
         } else {
-            val photographer = Bukkit
-                .getPhotographerManager()
-                .createPhotographer(
-                    (player.name + "_sus_" + UUID.randomUUID().toString().replace("-".toRegex(), ""))
-                        .substring(0, 16),
-                    player.location
-                )
-            if (photographer == null) {
-                throw RuntimeException(
-                    "Error on create suspicious photographer for player: {name: " + player.name + " , UUID:" + player.uniqueId + "}"
-                )
-            }
-            photographer.setFollowPlayer(player)
             val currentTime = LocalDateTime.now()
             val recordPath: String = toml!!.data.recordSuspiciousPlayer.recordPath
                 .replace("\${name}", player.name)
@@ -63,7 +52,18 @@ object AntiCheatListener : Listener {
                 recordFile.delete()
             }
             recordFile.createNewFile()
-            photographer.setRecordFile(recordFile)
+            val photographer = RecorderAPI.manager.createVirtualRecorder(
+                (player.name + "_sus_" + UUID.randomUUID().toString().replace("-".toRegex(), ""))
+                    .substring(0, 16),
+                player,
+                recordFile,
+                RecorderOption()
+            )
+            if (photographer == null) {
+                throw RuntimeException(
+                    "Error on create suspicious photographer for player: {name: " + player.name + " , UUID:" + player.uniqueId + "}"
+                )
+            }
             suspiciousPhotographers[player.name] = SuspiciousPhotographer(
                 photographer = photographer,
                 name = player.name,
@@ -76,7 +76,8 @@ object AntiCheatListener : Listener {
     fun onPlayerQuit(e: PlayerQuitEvent) {
         val suspiciousPhotographer = suspiciousPhotographers[e.player.name]
         if (suspiciousPhotographer != null) {
-            suspiciousPhotographer.photographer.stopRecording(toml!!.data.asyncSave)
+            suspiciousPhotographer.photographer.stopRecording()
+            suspiciousPhotographer.photographer.remove()
             suspiciousPhotographers.remove(e.player.name)
         }
     }

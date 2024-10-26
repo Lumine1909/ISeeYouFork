@@ -3,7 +3,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 plugins {
     id("java")
     id("io.github.goooler.shadow") version "8.1.7"
-    kotlin("jvm") version "1.9.20"
+    kotlin("jvm") version "2.0.21"
 }
 
 group = "cn.xor7"
@@ -17,8 +17,6 @@ repositories {
     mavenCentral()
     maven("https://oss.sonatype.org/content/groups/public/")
     maven("https://maven.aliyun.com/repository/public")
-    maven("https://repo.leavesmc.org/releases")
-    maven("https://repo.leavesmc.org/snapshots")
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.codemc.org/repository/maven-public/")
     flatDir {
@@ -35,11 +33,12 @@ dependencies {
     compileOnly("com.github.Elikill58:Negativity:2.7.1")
     //other dependencies
     implementation("com.moandjiezana.toml:toml4j:0.7.2")
-    compileOnly("org.leavesmc.leaves:leaves-api:1.21-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
     implementation("dev.jorel:commandapi-bukkit-shade-mojang-mapped:${commandAPIVer}")
     implementation("dev.jorel:commandapi-bukkit-kotlin:${commandAPIVer}")
     implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.0")
     implementation("net.jodah:expiringmap:0.5.11")
+    implementation("io.github.lumine1909:recorderapi-plugin:1.1")
 }
 
 val targetJavaVersion = 21
@@ -68,7 +67,6 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<ShadowJar> {
     relocate("dev.jorel.commandapi", "cn.xor7.iseeyou.commandapi")
-    minimize()
     exclude("META-INF/*.SF")
     exclude("META-INF/*.DSA")
     exclude("META-INF/*.RSA")
@@ -76,8 +74,11 @@ tasks.withType<ShadowJar> {
     manifest {
         attributes["paperweight-mappings-namespace"] = "mojang"
     }
+    archiveFileName.set("${project.name}-${project.version}-standalone.jar")
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of(targetJavaVersion))
+    }
 }

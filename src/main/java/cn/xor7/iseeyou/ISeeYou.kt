@@ -10,14 +10,17 @@ import dev.jorel.commandapi.CommandAPI
 import dev.jorel.commandapi.CommandAPIBukkitConfig
 import dev.jorel.commandapi.arguments.ArgumentSuggestions
 import dev.jorel.commandapi.kotlindsl.*
+import io.github.lumine1909.api.RecorderAPI
+import io.github.lumine1909.api.recorder.Recorder
+import io.github.lumine1909.api.recorder.RecorderOption
 import org.bukkit.Bukkit
 import org.bukkit.ChatColor
 import org.bukkit.Location
 import org.bukkit.command.CommandExecutor
 import org.bukkit.configuration.InvalidConfigurationException
+import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scheduler.BukkitRunnable
-import org.leavesmc.leaves.entity.Photographer
 import java.io.File
 import java.io.IOException
 import java.nio.file.*
@@ -34,8 +37,8 @@ import kotlin.io.path.isDirectory
 import kotlin.math.pow
 
 var toml: TomlEx<ConfigData>? = null
-var photographers = mutableMapOf<String, Photographer>()
-var highSpeedPausedPhotographers = mutableSetOf<Photographer>()
+var photographers = mutableMapOf<String, Recorder>()
+var highSpeedPausedPhotographers = mutableSetOf<Recorder>()
 var instance: JavaPlugin? = null
 
 @Suppress("unused")
@@ -52,6 +55,7 @@ class ISeeYou : JavaPlugin(), CommandExecutor {
     override fun onEnable() {
         instance = this
         CommandAPI.onEnable()
+        RecorderAPI.load(this)
         registerCommand()
         setupConfig()
 
@@ -152,26 +156,13 @@ class ISeeYou : JavaPlugin(), CommandExecutor {
             literalArgument("create") {
                 stringArgument("name") {
                     playerExecutor { player, args ->
-                        val location = player.location
                         val name = args["name"] as String
                         if (name.length !in 4..16) {
                             player.sendMessage("摄像机名称长度必须在4-16之间！")
                             return@playerExecutor
                         }
-                        createPhotographer(name, location)
+                        createPhotographer(name, player)
                         player.sendMessage("成功创建摄像机：$name")
-                    }
-                    locationArgument("location") {
-                        anyExecutor { sender, args ->
-                            val location = args["location"] as Location
-                            val name = args["name"] as String
-                            if (name.length !in 4..16) {
-                                sender.sendMessage("摄像机名称长度必须在4-16之间！")
-                                return@anyExecutor
-                            }
-                            createPhotographer(name, location)
-                            sender.sendMessage("成功创建摄像机：$name")
-                        }
                     }
                 }
             }
@@ -184,7 +175,7 @@ class ISeeYou : JavaPlugin(), CommandExecutor {
                             sender.sendMessage("不存在该摄像机！")
                             return@anyExecutor
                         }
-                        photographers[uuid]?.stopRecording(toml!!.data.asyncSave)
+                        photographers[uuid]?.stopRecording()
                         sender.sendMessage("成功移除摄像机：$name")
                     }
                 }
@@ -210,17 +201,9 @@ class ISeeYou : JavaPlugin(), CommandExecutor {
         }
     }
 
-    private fun createPhotographer(name: String, location: Location) {
-        val photographer = Bukkit
-            .getPhotographerManager()
-            .createPhotographer(name, location)
-        if (photographer == null) throw RuntimeException("Error on create photographer $name")
-        val uuid = UUID.randomUUID().toString()
-
-        photographer.teleport(location)
-        photographers[uuid] = photographer
-        commandPhotographersNameUUIDMap[name] = uuid
+    private fun createPhotographer(name: String, player: Player) {
         val currentTime = LocalDateTime.now()
+        val uuid = UUID.randomUUID().toString()
         val recordPath: String = toml!!.data.recordPath
             .replace("\${name}", "$name@Command")
             .replace("\${uuid}", uuid)
@@ -228,7 +211,11 @@ class ISeeYou : JavaPlugin(), CommandExecutor {
         val recordFile = File(recordPath + "/" + currentTime.format(EventListener.DATE_FORMATTER) + ".mcpr")
         if (recordFile.exists()) recordFile.delete()
         recordFile.createNewFile()
-        photographer.setRecordFile(recordFile)
+        val photographer = RecorderAPI.manager.createVirtualRecorder(name, player, recordFile, RecorderOption())
+        if (photographer == null) throw RuntimeException("Error on create photographer $name")
+        photographers[uuid] = photographer
+        commandPhotographersNameUUIDMap[name] = uuid
+        photographer.startRecording()
     }
 
     private fun setupConfig() {
@@ -353,7 +340,8 @@ class ISeeYou : JavaPlugin(), CommandExecutor {
     override fun onDisable() {
         CommandAPI.onDisable()
         for (photographer in photographers.values) {
-            photographer.stopRecording(toml!!.data.asyncSave)
+            photographer.stopRecording()
+            photographer.remove()
         }
         photographers.clear()
         highSpeedPausedPhotographers.clear()
